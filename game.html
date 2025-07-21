@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIKADA 2025 - Narozeninová hra</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka+One:wght@400&family=Open+Sans:wght@400;600;700&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Open Sans', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            max-width: 600px;
+            width: 100%;
+            padding: 40px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 10px,
+                rgba(255,215,0,0.1) 10px,
+                rgba(255,215,0,0.1) 20px
+            );
+            animation: shimmer 3s linear infinite;
+            pointer-events: none;
+        }
+        
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .title {
+            font-family: 'Fredoka One', cursive;
+            font-size: 2.5em;
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4, #45b7d1, #96ceb4);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: gradient 4s ease-in-out infinite;
+            margin-bottom: 10px;
+        }
+        
+        @keyframes gradient {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        
+        .prize {
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #333;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 1.2em;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 20px rgba(255,215,0,0.3);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .rules {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 25px;
+            border-left: 5px solid #4ecdc4;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .rules h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+        
+        .rule-item {
+            margin-bottom: 12px;
+            padding-left: 20px;
+            position: relative;
+            line-height: 1.6;
+        }
+        
+        .rule-item::before {
+            content: '🎯';
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        
+        .strategy {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 15px;
+            padding: 25px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .strategy h3 {
+            margin-bottom: 15px;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+        
+        .strategy-item {
+            margin-bottom: 10px;
+            padding-left: 20px;
+            position: relative;
+            line-height: 1.6;
+        }
+        
+        .strategy-item::before {
+            content: '💡';
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-style: italic;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .celebration {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            opacity: 0.8;
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        .celebration:nth-child(1) { top: 10%; left: 10%; animation-delay: 0s; }
+        .celebration:nth-child(2) { top: 20%; right: 15%; animation-delay: 1s; }
+        .celebration:nth-child(3) { bottom: 20%; left: 20%; animation-delay: 2s; }
+        .celebration:nth-child(4) { bottom: 30%; right: 10%; animation-delay: 3s; }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(180deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="celebration">🎉</div>
+        <div class="celebration">🎈</div>
+        <div class="celebration">🎁</div>
+        <div class="celebration">🎊</div>
+        
+        <div class="header">
+            <h1 class="title">NIKADA 2025</h1>
+            <div class="prize">🏆 VÝHRA: ALZA POUKÁZKA 1000 Kč 🏆</div>
+        </div>
+        
+        <div class="rules">
+            <h3>📋 Pravidla hry</h3>
+            <div class="rule-item">Moderátor si myslí na konkrétní věc</div>
+            <div class="rule-item">Každý hráč se může zeptat JEDNOHO ze 3 oslavenců na JEDNU otázku</div>
+            <div class="rule-item">Kdo první správně uhodne, co si moderátor myslel, vyhrává</div>
+            <div class="rule-item">Zakázáno používat internet nebo vyhledávače</div>
+        </div>
+        
+        <div class="strategy">
+            <h3>💡 Strategie</h3>
+            <div class="strategy-item">3 otázky jsou málo na přesné určení → spolupracujte!</div>
+            <div class="strategy-item">Můžete hrát týmově nebo individuálně</div>
+            <div class="strategy-item">Ptejte se strategicky - od obecného ke konkrétnímu</div>
+            <div class="strategy-item">Pozorně poslouchejte odpovědi ostatních</div>
+        </div>
+        
+        <div class="footer">
+            Ať vyhraje ten nejchytřejší! 🧠✨
+        </div>
+    </div>
+</body>
+</html>
