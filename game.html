@@ -334,15 +334,6 @@
             color: #667eea;
             font-weight: 600;
         }
-        
-        .error {
-            background: #ff6b6b;
-            color: white;
-            padding: 15px;
-            border-radius: 10px;
-            text-align: center;
-            margin: 10px 0;
-        }
     </style>
 </head>
 <body>
@@ -368,10 +359,13 @@
         </div>
         
         <div class="player-section">
-            <h3>👤 Zadej své jméno:</h3>
+            <h3>👤 Zadej jméno z trička:</h3>
+            <p style="text-align: center; color: #666; margin-bottom: 15px; font-size: 0.9em;">
+                🎽 Použij přesně jméno, které máš na tričku!
+            </p>
             <div class="name-container">
-                <input type="text" class="name-input" id="nameInput" placeholder="Tvoje jméno..." maxlength="30">
-                <button class="name-btn" id="nameBtn" onclick="setPlayerName()">Potvrdit</button>
+                <input type="text" class="name-input" id="nameInput" placeholder="Jméno z trička..." maxlength="30">
+                <button class="name-btn" id="nameBtn">Potvrdit</button>
             </div>
             <div id="nameStatus" class="loading" style="display:none;"></div>
         </div>
@@ -380,7 +374,7 @@
             <h3>🎯 Tvůj tip:</h3>
             <div class="guess-container">
                 <input type="text" class="guess-input" id="guessInput" placeholder="Co si myslím...?" maxlength="50">
-                <button class="guess-btn" id="guessBtn" onclick="makeGuess()">Tipovat!</button>
+                <button class="guess-btn" id="guessBtn">Tipovat!</button>
             </div>
             <div class="timeout-display" id="timeoutDisplay"></div>
             <div class="success-message" id="successMessage"></div>
@@ -404,7 +398,7 @@
     <script type="module">
         // Import Firebase
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, query, where, getDocs, serverTimestamp, Timestamp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, query, where, getDocs, serverTimestamp, Timestamp, updateDoc } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
         
         // Firebase config
         const firebaseConfig = {
@@ -422,23 +416,10 @@
         
         // Global variables
         let playerName = '';
-        let playerIP = '';
         let playerId = '';
         
-        // Get user IP (approximation)
-        async function getPlayerIP() {
-            try {
-                const response = await fetch('https://api.ipify.org?format=json');
-                const data = await response.json();
-                return data.ip;
-            } catch (error) {
-                console.log('Could not get IP, using fallback');
-                return 'unknown_' + Math.random().toString(36).substr(2, 9);
-            }
-        }
-        
         // Set player name and check timeout status
-        window.setPlayerName = async function() {
+        async function setPlayerName() {
             const nameInput = document.getElementById('nameInput');
             const nameBtn = document.getElementById('nameBtn');
             const nameStatus = document.getElementById('nameStatus');
@@ -446,26 +427,66 @@
             
             const name = nameInput.value.trim();
             if (!name) {
-                alert('Zadej své jméno!');
+                alert('Zadej jméno z trička!');
                 return;
             }
             
             nameBtn.disabled = true;
             nameStatus.style.display = 'block';
-            nameStatus.textContent = 'Připojuji...';
+            nameStatus.textContent = 'Kontroluji jméno...';
             
             try {
-                playerIP = await getPlayerIP();
-                playerName = name;
-                playerId = `${name}_${playerIP}`.toLowerCase();
+                // Check if player already exists
+                const q = query(
+                    collection(db, 'players'),
+                    where('name', '==', name.toLowerCase())
+                );
                 
-                // Check if player has active timeout
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    // New player - create record
+                    playerId = name.toLowerCase() + '_' + Date.now();
+                    playerName = name;
+                    
+                    await addDoc(collection(db, 'players'), {
+                        name: name.toLowerCase(),
+                        displayName: name,
+                        playerId: playerId,
+                        joinedAt: serverTimestamp(),
+                        isActive: true,
+                        timeoutUntil: null
+                    });
+                    
+                    nameStatus.textContent = `Nový hráč zaregistrován: ${playerName}`;
+                    nameStatus.style.color = '#51cf66';
+                } else {
+                    // Existing player - get data
+                    const playerDoc = querySnapshot.docs[0];
+                    const playerData = playerDoc.data();
+                    
+                    playerId = playerData.playerId;
+                    playerName = playerData.displayName;
+                    
+                    // Check for active timeout
+                    if (playerData.timeoutUntil && playerData.timeoutUntil.toDate() > new Date()) {
+                        nameStatus.textContent = `Vítej zpět, ${playerName} (máš aktivní timeout)`;
+                        nameStatus.style.color = '#ff6b6b';
+                    } else {
+                        nameStatus.textContent = `Vítej zpět, ${playerName}!`;
+                        nameStatus.style.color = '#51cf66';
+                    }
+                }
+                
+                // Store in localStorage for quick access
+                localStorage.setItem('nikadaPlayerName', playerName);
+                localStorage.setItem('nikadaPlayerId', playerId);
+                
+                // Check timeout status
                 await checkTimeoutStatus();
                 
                 nameInput.disabled = true;
                 gameSection.classList.add('active');
-                nameStatus.textContent = `Připojen jako: ${playerName}`;
-                nameStatus.style.color = '#51cf66';
                 
             } catch (error) {
                 console.error('Error setting player name:', error);
@@ -473,48 +494,52 @@
                 nameStatus.style.color = '#ff6b6b';
                 nameBtn.disabled = false;
             }
-        };
+        }
         
         // Check if player has active timeout
         async function checkTimeoutStatus() {
             try {
+                // Check Firebase for active timeout based on player name
                 const q = query(
-                    collection(db, 'guesses'),
-                    where('playerId', '==', playerId),
-                    where('isCorrect', '==', false)
+                    collection(db, 'players'),
+                    where('name', '==', playerName.toLowerCase())
                 );
                 
                 const querySnapshot = await getDocs(q);
-                let latestTimeout = null;
                 
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    if (data.timeoutUntil && data.timeoutUntil.toDate() > new Date()) {
-                        if (!latestTimeout || data.timeoutUntil.toDate() > latestTimeout) {
-                            latestTimeout = data.timeoutUntil.toDate();
-                        }
+                if (!querySnapshot.empty) {
+                    const playerDoc = querySnapshot.docs[0];
+                    const playerData = playerDoc.data();
+                    
+                    if (playerData.timeoutUntil && playerData.timeoutUntil.toDate() > new Date()) {
+                        // Player has active timeout
+                        showTimeoutState(playerData.timeoutUntil.toDate());
+                        return true;
                     }
-                });
-                
-                if (latestTimeout) {
-                    const guessBtn = document.getElementById('guessBtn');
-                    const guessInput = document.getElementById('guessInput');
-                    const timeoutDisplay = document.getElementById('timeoutDisplay');
-                    
-                    guessBtn.disabled = true;
-                    guessInput.disabled = true;
-                    timeoutDisplay.style.display = 'block';
-                    
-                    updateCountdownFromDate(latestTimeout);
                 }
+                
+                return false;
                 
             } catch (error) {
                 console.error('Error checking timeout:', error);
+                return false;
             }
         }
         
+        function showTimeoutState(endTime) {
+            const guessBtn = document.getElementById('guessBtn');
+            const guessInput = document.getElementById('guessInput');
+            const timeoutDisplay = document.getElementById('timeoutDisplay');
+            
+            guessBtn.disabled = true;
+            guessInput.disabled = true;
+            timeoutDisplay.style.display = 'block';
+            
+            updateCountdownFromDate(endTime);
+        }
+        
         // Make a guess
-        window.makeGuess = async function() {
+        async function makeGuess() {
             const guessInput = document.getElementById('guessInput');
             const guessBtn = document.getElementById('guessBtn');
             const guessStatus = document.getElementById('guessStatus');
@@ -541,29 +566,47 @@
                 const querySnapshot = await getDocs(q);
                 const isCorrect = !querySnapshot.empty;
                 
-                // Calculate timeout end time (15 minutes from now)
-                const timeoutEnd = new Date();
-                timeoutEnd.setMinutes(timeoutEnd.getMinutes() + 15);
-                
                 // Store the guess in Firebase
                 await addDoc(collection(db, 'guesses'), {
                     playerId: playerId,
                     playerName: playerName,
-                    ipAddress: playerIP,
                     guess: guess,
                     timestamp: serverTimestamp(),
-                    isCorrect: isCorrect,
-                    timeoutUntil: isCorrect ? null : Timestamp.fromDate(timeoutEnd)
+                    isCorrect: isCorrect
                 });
                 
                 guessStatus.style.display = 'none';
                 
                 if (isCorrect) {
-                    // Correct guess!
+                    // Correct guess! Get secret phrase from Firebase
+                    const settingsQuery = query(collection(db, 'gameSettings'));
+                    const settingsSnapshot = await getDocs(settingsQuery);
+                    let secretPhrase = "CHYBA - KONTAKTUJ LUKI";
+                    
+                    if (!settingsSnapshot.empty) {
+                        const settingsDoc = settingsSnapshot.docs[0];
+                        secretPhrase = settingsDoc.data().secretPhrase || secretPhrase;
+                    }
+                    
+                    // Clear timeout in Firebase
+                    const playerQuery = query(
+                        collection(db, 'players'),
+                        where('name', '==', playerName.toLowerCase())
+                    );
+                    
+                    const playerSnapshot = await getDocs(playerQuery);
+                    if (!playerSnapshot.empty) {
+                        const playerDoc = playerSnapshot.docs[0];
+                        await updateDoc(playerDoc.ref, {
+                            timeoutUntil: null,
+                            wonAt: serverTimestamp()
+                        });
+                    }
+                    
                     successMessage.innerHTML = `
                         🎉 SPRÁVNĚ! Uhodl jsi: "${guess.toUpperCase()}" 🎉<br><br>
                         <div style="background: #ffd700; color: #333; padding: 15px; border-radius: 10px; font-size: 1.2em; font-weight: bold; margin: 10px 0; border: 3px dashed #ff6b6b;">
-                            🔑 TAJNÉ HESLO: "LOKOMOTIVA" 🔑<br>
+                            🔑 TAJNÉ HESLO: "${secretPhrase}" 🔑<br>
                             <small style="font-size: 0.8em; font-weight: normal;">Řekni toto heslo Lukimu jako první a vyhraj Alza poukázku 1000 Kč!</small>
                         </div>
                     `;
@@ -575,7 +618,25 @@
                     document.body.style.background = 'linear-gradient(135deg, #51cf66, #69db7c)';
                     
                 } else {
-                    // Wrong guess - start timeout
+                    // Wrong guess - set Firebase timeout
+                    const timeoutEnd = new Date();
+                    timeoutEnd.setMinutes(timeoutEnd.getMinutes() + 15);
+                    
+                    // Update player timeout in Firebase
+                    const playerQuery = query(
+                        collection(db, 'players'),
+                        where('name', '==', playerName.toLowerCase())
+                    );
+                    
+                    const playerSnapshot = await getDocs(playerQuery);
+                    if (!playerSnapshot.empty) {
+                        const playerDoc = playerSnapshot.docs[0];
+                        await updateDoc(playerDoc.ref, {
+                            timeoutUntil: Timestamp.fromDate(timeoutEnd),
+                            lastWrongGuess: serverTimestamp()
+                        });
+                    }
+                    
                     timeoutDisplay.textContent = `❌ Špatný tip! Timeout 15 minut. Zkus to až v ${timeoutEnd.toLocaleTimeString('cs-CZ')}.`;
                     timeoutDisplay.style.display = 'block';
                     successMessage.style.display = 'none';
@@ -593,7 +654,7 @@
                 guessStatus.style.color = '#ff6b6b';
                 guessBtn.disabled = false;
             }
-        };
+        }
         
         // Update countdown display
         function updateCountdownFromDate(endTime) {
@@ -602,7 +663,8 @@
                 const remaining = endTime.getTime() - now;
                 
                 if (remaining <= 0) {
-                    // Timeout expired
+                    // Timeout expired - clear timeout in Firebase
+                    clearExpiredTimeout();
                     const timeoutDisplay = document.getElementById('timeoutDisplay');
                     const guessBtn = document.getElementById('guessBtn');
                     const guessInput = document.getElementById('guessInput');
@@ -625,18 +687,25 @@
             updateDisplay();
         }
         
-        // Allow Enter key to submit
-        document.getElementById('nameInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && !document.getElementById('nameBtn').disabled) {
-                setPlayerName();
+        // Clear expired timeout in Firebase
+        async function clearExpiredTimeout() {
+            try {
+                const q = query(
+                    collection(db, 'players'),
+                    where('name', '==', playerName.toLowerCase())
+                );
+                
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    const playerDoc = querySnapshot.docs[0];
+                    await updateDoc(playerDoc.ref, {
+                        timeoutUntil: null
+                    });
+                }
+            } catch (error) {
+                console.error('Error clearing timeout:', error);
             }
-        });
-        
-        document.getElementById('guessInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && !document.getElementById('guessBtn').disabled) {
-                makeGuess();
-            }
-        });
+        }
         
         // Initialize valid answers in Firestore (run this once)
         async function initializeGameData() {
@@ -664,6 +733,48 @@
                 console.log('Game data already initialized or error:', error);
             }
         }
+        
+        // Check if returning user on page load
+        window.addEventListener('load', function() {
+            const storedName = localStorage.getItem('nikadaPlayerName');
+            const storedId = localStorage.getItem('nikadaPlayerId');
+            
+            if (storedName && storedId) {
+                playerName = storedName;
+                playerId = storedId;
+                
+                document.getElementById('nameInput').value = storedName;
+                document.getElementById('nameInput').disabled = true;
+                document.getElementById('nameBtn').disabled = true;
+                
+                const nameStatus = document.getElementById('nameStatus');
+                nameStatus.style.display = 'block';
+                nameStatus.textContent = `Vítej zpět, ${playerName}!`;
+                nameStatus.style.color = '#51cf66';
+                
+                document.getElementById('gameSection').classList.add('active');
+                
+                // Check timeout status
+                checkTimeoutStatus();
+            }
+            
+            // Add event listeners after DOM is loaded
+            document.getElementById('nameBtn').addEventListener('click', setPlayerName);
+            document.getElementById('guessBtn').addEventListener('click', makeGuess);
+            
+            // Allow Enter key to submit
+            document.getElementById('nameInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !document.getElementById('nameBtn').disabled) {
+                    setPlayerName();
+                }
+            });
+            
+            document.getElementById('guessInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !document.getElementById('guessBtn').disabled) {
+                    makeGuess();
+                }
+            });
+        });
         
         // Initialize when page loads
         initializeGameData();
