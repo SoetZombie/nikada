@@ -345,13 +345,13 @@
         
         <div class="header">
             <h1 class="title">NIKADA 2025</h1>
-            <div class="prize">🏆 VÝHRA: ALZA POUKÁZKA 1000 Kč 🏆</div>
+            <div class="prize">🏆 VÝHRA: ALZA POUKÁZKA 500 Kč 🏆</div>
         </div>
         
         <div class="rules">
             <h3>📋 Pravidla hry</h3>
             <div class="rule-item">Moderátor si myslí na konkrétní věc</div>
-            <div class="rule-item">Každý hráč se může zeptat JEDNOHO ze 3 oslavenců na JEDNU otázku</div>
+            <div class="rule-item">Každý hráč se může zeptat JEDNOHO ze 3 oslavenců na JEDNU otázku na kterou se dá odpovědět ANO/NE</div>
             <div class="rule-item">Po nesprávném tipu → TIMEOUT 15 minut! ⏰</div>
             <div class="rule-item">Po správném tipu dostaneš TAJNÉ HESLO 🔑</div>
             <div class="rule-item">Kdo první řekne tajné heslo Lukimu, vyhrává!</div>
@@ -496,9 +496,23 @@
             }
         }
         
-        // Check if player has active timeout
+        // Get UTC time from API
+        async function getUTCTime() {
+            try {
+                const response = await fetch('https://worldtimeapi.org/api/timezone/UTC');
+                const data = await response.json();
+                return new Date(data.utc_datetime);
+            } catch (error) {
+                console.error('Error getting UTC time, falling back to local time:', error);
+                return new Date(); // Fallback to local time if API fails
+            }
+        }
+
+        // Check if player has active timeout using UTC time
         async function checkTimeoutStatus() {
             try {
+                const utcNow = await getUTCTime();
+                
                 // Check Firebase for active timeout based on player name
                 const q = query(
                     collection(db, 'players'),
@@ -511,7 +525,7 @@
                     const playerDoc = querySnapshot.docs[0];
                     const playerData = playerDoc.data();
                     
-                    if (playerData.timeoutUntil && playerData.timeoutUntil.toDate() > new Date()) {
+                    if (playerData.timeoutUntil && playerData.timeoutUntil.toDate() > utcNow) {
                         // Player has active timeout
                         showTimeoutState(playerData.timeoutUntil.toDate());
                         return true;
@@ -550,6 +564,30 @@
             if (!guess) {
                 alert('Napiš svůj tip!');
                 return;
+            }
+            
+            // First check if player has active timeout using UTC time
+            try {
+                const utcNow = await getUTCTime();
+                
+                const playerQuery = query(
+                    collection(db, 'players'),
+                    where('name', '==', playerName.toLowerCase())
+                );
+                
+                const playerSnapshot = await getDocs(playerQuery);
+                if (!playerSnapshot.empty) {
+                    const playerData = playerSnapshot.docs[0].data();
+                    
+                    // Check server-side timeout using UTC
+                    if (playerData.timeoutUntil && playerData.timeoutUntil.toDate() > utcNow) {
+                        alert('Máš stále aktivní timeout! Nemůžeš tipovat.');
+                        showTimeoutState(playerData.timeoutUntil.toDate());
+                        return;
+                    }
+                }
+            } catch (error) {
+                console.error('Error checking timeout:', error);
             }
             
             guessBtn.disabled = true;
@@ -618,11 +656,7 @@
                     document.body.style.background = 'linear-gradient(135deg, #51cf66, #69db7c)';
                     
                 } else {
-                    // Wrong guess - set Firebase timeout
-                    const timeoutEnd = new Date();
-                    timeoutEnd.setMinutes(timeoutEnd.getMinutes() + 15);
-                    
-                    // Update player timeout in Firebase
+                    // Wrong guess - set Firebase timeout using server timestamp
                     const playerQuery = query(
                         collection(db, 'players'),
                         where('name', '==', playerName.toLowerCase())
@@ -631,21 +665,26 @@
                     const playerSnapshot = await getDocs(playerQuery);
                     if (!playerSnapshot.empty) {
                         const playerDoc = playerSnapshot.docs[0];
+                        
+                        // Create timeout 15 minutes from server time
+                        const timeoutEnd = new Date();
+                        timeoutEnd.setMinutes(timeoutEnd.getMinutes() + 15);
+                        
                         await updateDoc(playerDoc.ref, {
                             timeoutUntil: Timestamp.fromDate(timeoutEnd),
                             lastWrongGuess: serverTimestamp()
                         });
+                        
+                        timeoutDisplay.textContent = `❌ Špatný tip! Timeout 15 minut. Zkus to až v ${timeoutEnd.toLocaleTimeString('cs-CZ')}.`;
+                        timeoutDisplay.style.display = 'block';
+                        successMessage.style.display = 'none';
+                        
+                        guessInput.disabled = true;
+                        guessInput.value = '';
+                        
+                        // Start countdown with server validation
+                        updateCountdownFromDate(timeoutEnd);
                     }
-                    
-                    timeoutDisplay.textContent = `❌ Špatný tip! Timeout 15 minut. Zkus to až v ${timeoutEnd.toLocaleTimeString('cs-CZ')}.`;
-                    timeoutDisplay.style.display = 'block';
-                    successMessage.style.display = 'none';
-                    
-                    guessInput.disabled = true;
-                    guessInput.value = '';
-                    
-                    // Start countdown
-                    updateCountdownFromDate(timeoutEnd);
                 }
                 
             } catch (error) {
@@ -656,32 +695,37 @@
             }
         }
         
-        // Update countdown display
+        // Update countdown display using UTC time
         function updateCountdownFromDate(endTime) {
-            function updateDisplay() {
-                const now = new Date().getTime();
-                const remaining = endTime.getTime() - now;
-                
-                if (remaining <= 0) {
-                    // Timeout expired - clear timeout in Firebase
-                    clearExpiredTimeout();
-                    const timeoutDisplay = document.getElementById('timeoutDisplay');
-                    const guessBtn = document.getElementById('guessBtn');
-                    const guessInput = document.getElementById('guessInput');
+            async function updateDisplay() {
+                try {
+                    const utcNow = await getUTCTime();
+                    const remaining = endTime.getTime() - utcNow.getTime();
                     
-                    timeoutDisplay.style.display = 'none';
-                    guessBtn.disabled = false;
-                    guessInput.disabled = false;
-                    return;
+                    if (remaining <= 0) {
+                        // Timeout expired
+                        clearExpiredTimeout();
+                        const timeoutDisplay = document.getElementById('timeoutDisplay');
+                        const guessBtn = document.getElementById('guessBtn');
+                        const guessInput = document.getElementById('guessInput');
+                        
+                        timeoutDisplay.style.display = 'none';
+                        guessBtn.disabled = false;
+                        guessInput.disabled = false;
+                        return;
+                    }
+                    
+                    const minutes = Math.floor(remaining / 1000 / 60);
+                    const seconds = Math.floor((remaining / 1000) % 60);
+                    
+                    const timeoutDisplay = document.getElementById('timeoutDisplay');
+                    timeoutDisplay.textContent = `⏰ Timeout: ${minutes}:${seconds.toString().padStart(2, '0')} zbývá`;
+                    
+                } catch (error) {
+                    console.error('Error updating countdown:', error);
                 }
                 
-                const minutes = Math.floor(remaining / 1000 / 60);
-                const seconds = Math.floor((remaining / 1000) % 60);
-                
-                const timeoutDisplay = document.getElementById('timeoutDisplay');
-                timeoutDisplay.textContent = `⏰ Timeout: ${minutes}:${seconds.toString().padStart(2, '0')} zbývá`;
-                
-                setTimeout(updateDisplay, 1000);
+                setTimeout(updateDisplay, 5000); // Check every 5 seconds with UTC time
             }
             
             updateDisplay();
@@ -707,32 +751,7 @@
             }
         }
         
-        // Initialize valid answers in Firestore (run this once)
-        async function initializeGameData() {
-            try {
-                // Check if valid answers already exist
-                const validAnswersQuery = await getDocs(collection(db, 'validAnswers'));
-                if (validAnswersQuery.empty) {
-                    // Add valid answer
-                    await addDoc(collection(db, 'validAnswers'), {
-                        answer: 'pes'
-                    });
-                }
-                
-                // Check if game settings exist
-                const gameSettingsQuery = await getDocs(collection(db, 'gameSettings'));
-                if (gameSettingsQuery.empty) {
-                    // Add game settings
-                    await addDoc(collection(db, 'gameSettings'), {
-                        adminPassword: 'Kokot123',
-                        gameActive: true,
-                        secretPhrase: 'LOKOMOTIVA'
-                    });
-                }
-            } catch (error) {
-                console.log('Game data already initialized or error:', error);
-            }
-        }
+
         
         // Check if returning user on page load
         window.addEventListener('load', function() {
@@ -777,7 +796,6 @@
         });
         
         // Initialize when page loads
-        initializeGameData();
         
     </script>
 </body>
